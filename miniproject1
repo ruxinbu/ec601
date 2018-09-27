@@ -1,1 +1,129 @@
+#!/usr/bin/env python
+# encoding: utf-8
+#Copyright 2018 Ruxin Diao ruxin@bu.edu
 
+
+import tweepy #https://github.com/tweepy/tweepy
+import json
+import io
+import os
+import wget
+import google.cloud
+
+#Twitter API credentials
+consumer_key = "UYhCscWfO5Sp8obTzkC9hGrAV"
+consumer_secret = "6dhcJa4IcuGzovTKFwjW3IE117w7YRWRt5p2RhVMQXxy3uzrM6"
+access_key = "1042039826588073989-HkvULvtKJIpaxjh8QNUeYxfaG77JcP"
+access_secret = "Qk17Ua9aMWEK8KggWJybQ3EghPEtfF7N8GFvymSBDd0p9"
+
+
+def get_all_tweets(screen_name):
+    
+    #Twitter only allows access to a users most recent 3240 tweets with this method
+    
+    #authorize twitter, initialize tweepy
+    auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
+    auth.set_access_token(access_key, access_secret)
+    api = tweepy.API(auth)
+    
+    #initialize a list to hold all the tweepy Tweets
+    alltweets = []
+    
+    #make initial request for most recent tweets (200 is the maximum allowed count)
+    new_tweets = api.user_timeline(screen_name = screen_name,count=10)
+    
+    #save most recent tweets
+    alltweets.extend(new_tweets)
+    
+    #save the id of the oldest tweet less one
+    oldest = alltweets[-1].id - 1
+    
+    #keep grabbing tweets until there are no tweets left to grab
+    while len(new_tweets) > 0:
+        
+        #all subsiquent requests use the max_id param to prevent duplicates
+        new_tweets = api.user_timeline(screen_name = screen_name,count=10,max_id=oldest)
+        
+        #save most recent tweets
+        alltweets.extend(new_tweets)
+        
+        #update the id of the oldest tweet less one
+        oldest = alltweets[-1].id - 1
+        if(len(alltweets) > 15):
+            break
+
+
+
+#save the pictures as a list
+pictures=[]
+    for tweet in alltweets:
+        tem=tweet.entities.get('media', [])
+        if(len(tem)>0):
+            pictures.append(tem[0]['media_url'])
+#download the pictures
+path="/Users/bianfuru/Desktop/601/pictures"
+    for picture in pictures:
+        wget.download(picture,out=path)
+
+
+def google_vision_label():
+    #load google credentials.json to os environment
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"]= "/Users/bianfuru/Desktop/601/miniproject1-b5af4e44e5d9.json"
+    # Imports the Google Cloud client library
+    from google.cloud import vision
+    from google.cloud.vision import types
+    import PIL.Image as Image
+    import PIL.ImageDraw as ImageDraw
+    import PIL.ImageFont as ImageFont
+    
+    # Instantiates a client
+    client = vision.ImageAnnotatorClient()
+    
+    # The name of the image file to annotate
+    path="/Users/bianfuru/Desktop/601/pictures"
+    imgs = os.listdir(path)
+    cnt = 1
+    for img in imgs:
+        file_name = os.path.join(path,img)
+        
+        # Loads the image into memory
+        with io.open(file_name, 'rb') as image_file:
+            content = image_file.read()
+    
+        image = types.Image(content=content)
+        
+        # Performs label detection on the image file
+        response = client.label_detection(image=image)
+        labels = response.label_annotations
+        
+        description=[]
+        for label in labels:
+            description.append(label.description)
+        #sep = "\n", change line for every label
+        string="\n".join(description)
+        
+        
+        #Usign pillow module, draw text on imgs and save them with %d.jpg format
+        #pillow sample from pillow draw module tutorial"https://pillow.readthedocs.io/en/3.0.x/reference/ImageDraw.html"
+        #define font of the text
+        FONT_PATH="/Aplications/Microsoft Excel.app/Contents/Resources/Fonts/Arial.ttf"
+        font = ImageFont.truetype('Arial.ttf', 50)
+        #define position to start drawing text
+        (x, y) = (0, 0)
+        im = Image.open(file_name).convert('RGB')
+        draw = ImageDraw.Draw(im)
+        #draw string text on the img, with rgb color (255,255,0,0)
+        draw.text((x, y), string, (255,255,0,0), font = font)
+        im.save(str('%d'%cnt)+'.jpg', 'JPEG')
+    cnt+=1
+
+def img_to_video():
+    
+    os.system('ffmpeg -r 1/3 -f image2 -i %d.jpg -s 800x600 photos.mp4')
+
+
+if __name__ == '__main__':
+    #pass in the username of the account you want to download
+    get_all_tweets("@realDonaldTrump")
+    google_vision_label()
+    img_to_video()
